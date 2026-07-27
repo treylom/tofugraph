@@ -19,7 +19,13 @@ set -uo pipefail
 API="${GRAPHRAG_API_URL:-http://127.0.0.1:8400}"
 
 resolve_root() {
-  if [ -n "${GRAPHRAG_ROOT:-}" ]; then echo "$GRAPHRAG_ROOT"; return; fi
+  # 환경변수 override 도 실재 검증 후에만 채택한다 — 잘못된 값을 그대로 쓰면
+  # "세 곳 모두에 없습니다"가 동봉 engine/ 을 확인도 안 하고 뜨고, 처방(재설치)이
+  # 헛다리를 유도한다 (2026-07-28 루돌프 WSL 실측).
+  if [ -n "${GRAPHRAG_ROOT:-}" ]; then
+    if [ -f "$GRAPHRAG_ROOT/scripts/cli.py" ]; then echo "$GRAPHRAG_ROOT"; return; fi
+    echo "[WARN] GRAPHRAG_ROOT='$GRAPHRAG_ROOT' 에 scripts/cli.py 가 없어 이 값을 무시하고 자동 탐색합니다." >&2
+  fi
   local d="$PWD"
   while [ "$d" != "/" ]; do
     # 디렉터리 존재가 아니라 cli.py 실재로 판정한다 — build 는 산출물을
@@ -123,6 +129,8 @@ doctor() {
     echo "[OK]   1. server /health 200"
   else
     echo "[FAIL] 1. server /health=$health — server down or hung."
+    echo "       주소부터: 지금 보는 주소 = $API (GRAPHRAG_API_URL). 다른 기계·옛 IP 를"
+    echo "       가리키면 서버가 멀쩡해도 FAIL 로 보입니다 — 주소가 맞는지 먼저 확인하세요."
     echo "       fix: re-check in 60s (transient hiccups self-recover);"
     echo "            if still down, this tool can restart it: tofugraph.sh heal"
     echo "            상시 데몬을 등록한 적이 없다면(수강생 기본) heal 로는 못 살립니다 —"
@@ -539,8 +547,11 @@ EOF
     그 안에 설치 도구(pip)가 들어가지 않습니다. 아래 중 하나를 **먼저** 하세요:
 
       sudo apt install python3-venv          (Ubuntu·Debian 계열)
-      brew install uv  →  uv venv $ROOT/.venv   (uv 를 쓰신다면)
+      brew install uv  →  uv venv <전용 자리 경로>/.venv   (uv 를 쓰신다면)
 EOF
+    # quoted heredoc 안이라 $ROOT 가 안 펼쳐진다 — 실제 경로는 별도 줄로 찍어준다
+    # (2026-07-28 루돌프 실측: 그 줄만 복붙하면 빈 경로가 됨).
+    echo "      (전용 자리 경로 = $ROOT)"
     fi
     cat << EOF
 
