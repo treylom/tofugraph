@@ -1,7 +1,7 @@
 {
   "name": "tofugraph",
   "description": "GraphRAG 구축·검색·운영 — knowledge-manager 로 그린 Obsidian 그래프 위에 검색 엔진을 얹고 관리합니다 (/tofugraph:links 등 기능별 명령)",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": {
     "name": "tofukyung",
     "url": "https://github.com/treylom"

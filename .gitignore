@@ -11,3 +11,5 @@ venv/
 
 # 3D 뷰어 생성물 (build 로 만들어지는 결과물)
 scripts/graph3d/out/
+/graph3d-data*.json
+/graph3d*.html
