@@ -21,7 +21,9 @@ Obsidian vault 의 지식 그래프(frontmatter + 위키링크) 위에 GraphRAG 
 ## 사용
 
 ```
-/tofugraph              → doctor (진단 + 처방 — 첫 실행이면 여기부터)
+/tofugraph              → 창고 링크 건강검진 (= links. 설치·서버 불필요 — 처음이면 여기부터)
+/tofugraph links [경로]  → 위와 동일 (깨진 링크·외톨이 노트 등 6종 진단 + 처방)
+/tofugraph doctor       → 검색 시스템 점검 (진단 + 처방 — 검색이 안 될 때)
 /tofugraph build        → 인덱스 구축 (필요 라이브러리 부족하면 안내 후 정지)
 /tofugraph viz          → 3D 그래프 뷰어 생성 (단일 HTML — 서버 불필요, 브라우저로 바로 열기)
 /tofugraph search <질문> → 검색 1회 (동작 확인)
