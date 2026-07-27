@@ -72,7 +72,8 @@ resolve_service() {
 restart_server() {
   local label; label=$(resolve_service)
   if [ -z "$label" ]; then
-    echo "  → cannot restart: no service registered (run install-daemon, or start the server manually)"
+    echo "  → cannot restart: no service registered (auto-heal 은 install-daemon 등록 후에만 동작)"
+    server_start_hint
     return 1
   fi
   if [[ "$OSTYPE" == darwin* ]]; then
@@ -93,6 +94,21 @@ wait_ready() {  # up to 60s
   return 1
 }
 
+server_start_hint() {
+  # 수강생 환경엔 상시 데몬이 없다 — build 는 되는데 search/bench 가 서버 부재로
+  # 막히고, doctor→heal 은 "등록된 서비스 없음" 막다른 길이었다(2026-07-27 재경님
+  # 적발). 기동 명령은 엔진에 실재(search_server.py 도크스트링)하지만 수강생이
+  # 읽는 층에 노출이 없었다 — 그 한 줄을 여기서 표면화한다.
+  local py; py=$(resolve_python)
+  if [ -n "$ROOT" ] && [ -f "$ROOT/scripts/search_server.py" ]; then
+    echo "  서버 수동 기동(한 줄, 새 터미널 권장):"
+    echo "    cd \"$ROOT/scripts\" && $py -m uvicorn search_server:app --host 127.0.0.1 --port 8400"
+    echo "    (그 터미널을 계속 점유합니다 — 멈추려면 Ctrl+C. uvicorn 이 없다면: $py -m pip install 'uvicorn[standard]' fastapi)"
+  else
+    echo "  서버 수동 기동: 엔진 scripts/ 폴더에서  python3 -m uvicorn search_server:app --host 127.0.0.1 --port 8400"
+  fi
+}
+
 # ---------------------------------------------------------------- doctor ----
 doctor() {
   local fails=0 warns=0
@@ -109,6 +125,8 @@ doctor() {
     echo "[FAIL] 1. server /health=$health — server down or hung."
     echo "       fix: re-check in 60s (transient hiccups self-recover);"
     echo "            if still down, this tool can restart it: tofugraph.sh heal"
+    echo "            상시 데몬을 등록한 적이 없다면(수강생 기본) heal 로는 못 살립니다 —"
+    server_start_hint
     fails=$((fails+1))
   fi
 
@@ -238,7 +256,9 @@ heal() {
     if wait_ready; then echo "recovered: restart + /ready GREEN"; return 0
     else echo "partial: restarted but /ready timed out — wait another 1-2min (model warm-up) and run doctor"; return 1; fi
   else
-    echo "restart unavailable — start the server manually, then run doctor"; return 1
+    echo "restart unavailable — 아래 한 줄로 직접 기동한 뒤 doctor 로 확인하세요:"
+    server_start_hint
+    return 1
   fi
 }
 
@@ -584,7 +604,19 @@ delegate_engine() {
     done
     "$py" "$ROOT/scripts/cli.py" \
       "${global_args[@]+"${global_args[@]}"}" "$verb" "${verb_args[@]+"${verb_args[@]}"}"
-    return
+    local rc=$?
+    if [ "$verb" = "build" ] && [ "$rc" = "0" ]; then
+      # build 성공 ≠ 검색 가능 — search/bench 는 검색 서버가 떠 있어야 한다.
+      # 서버가 이미 살아 있으면(우리 봇 환경 등) 이 안내는 생략한다.
+      local h; h=$(curl -s -m 3 -o /dev/null -w '%{http_code}' "$API/health" 2>/dev/null || echo ERR)
+      if [ "$h" != "200" ]; then
+        echo
+        echo "다음 단계: 검색 서버 기동 — search·bench 는 서버가 떠 있어야 동작합니다."
+        server_start_hint
+        echo "  기동 후 확인:  tofugraph.sh doctor"
+      fi
+    fi
+    return $rc
   fi
   if [ -n "$ROOT" ] && [ -d "$ROOT/scripts" ]; then
     echo "engine found at $ROOT/scripts — run its documented build entry (see ThisCode docs/06-graphrag-setup.md)."
