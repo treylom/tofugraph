@@ -1,0 +1,9 @@
+{
+  "name": "tofugraph",
+  "version": "0.3.2",
+  "description": "GraphRAG 구축·검색·운영 — Obsidian 그래프 위에 검색 엔진을 얹고 관리합니다 (Codex에서는 $tofugraph-links 등 스킬로 호출)",
+  "author": {
+    "name": "tofukyung"
+  },
+  "skills": "./.agent/skills/"
+}

@@ -11,6 +11,6 @@ allowed-tools: Bash, Read
 
 1. 다음을 실행한다:
    ```bash
-   bash scripts/graphrag-ops/tofugraph.sh install-daemon
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/graphrag-ops/tofugraph.sh" install-daemon
    ```
 2. 해제를 원하면 `uninstall-daemon` 을 안내한다. 켜기 전에 사용자에게 "1시간마다 자동으로 도는 관리 장치"임을 한 줄로 알리고 진행한다.

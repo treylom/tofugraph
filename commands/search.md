@@ -17,6 +17,6 @@ allowed-tools: Bash, Read
 
 1. 다음을 실행한다:
    ```bash
-   bash scripts/graphrag-ops/tofugraph.sh search "<질문>"
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/graphrag-ops/tofugraph.sh" search "<질문>"
    ```
 2. 결과를 사용자 눈높이로 요약한다 — 상위 결과 몇 건과 출처 노트만. 서버가 꺼져 있다는 오류면 `/tofugraph:doctor` 로 안내한다.

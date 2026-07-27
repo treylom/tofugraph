@@ -13,7 +13,7 @@ allowed-tools: Bash, Read
 
 1. 다음을 실행한다:
    ```bash
-   bash scripts/graphrag-ops/tofugraph.sh doctor
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/graphrag-ops/tofugraph.sh" doctor
    ```
 2. 출력을 **사용자 눈높이로 요약**한다 — [FAIL]/[WARN] 항목은 처방(fix: 줄)을 그대로 전달하고, 전부 [OK]면 "검색 시스템 정상" 한 줄이면 충분.
 3. ⚠️ 경계: 디스크 부족·OS 업데이트류 [WARN]은 이 도구가 고치지 않는다 — 사용자에게 보고만 한다(자동 삭제·정리 금지).

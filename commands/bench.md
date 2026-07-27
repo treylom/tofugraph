@@ -18,7 +18,7 @@ allowed-tools: Bash, Read
 
 1. `bench init` / `bench run [파일] [--top-k N]` 을 그대로 위임한다:
    ```bash
-   bash scripts/graphrag-ops/tofugraph.sh bench <init|run> [args]
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/graphrag-ops/tofugraph.sh" bench <init|run> [args]
    ```
 2. `bench run` 은 `search` 와 같은 API 경로를 쓰므로 서버가 떠 있어야 하고, 꺼져 있으면 `/tofugraph:doctor` · `/tofugraph:heal` 로 유도하는 안내가 나온다 — 그대로 전달한다.
 3. 결과 표는 질문별 적중 순위와 전체 적중률만 눈높이로 요약한다.

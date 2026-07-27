@@ -28,4 +28,6 @@ knowledge-manager로 그린 그래프(frontmatter + 위키링크) 위에 GraphRA
 
 1. **인자 없이 호출되면 아무것도 실행하지 않는다** — 위 명령 목록을 사용자 눈높이로 보여주고, 처음이면 `/tofugraph:links` 부터 안내한다.
 2. **하위호환**: `/tofugraph <동사>` 형태(구 표기)로 인자가 들어오면 해당 기능의 명령 문서(commands/<동사>.md — `viz`는 `3d`, `guard-set`은 아래 3)와 동일하게 실행해 준다. 단 응답 끝에 "다음부터는 `/tofugraph:<동사>` 로 부르시면 됩니다" 한 줄을 덧붙인다.
-3. `guard-set`(의미 라벨 가드 기준선 재설정 — 노트 삭제 등 의도적 감소 후에만)은 `bash scripts/graphrag-ops/tofugraph.sh guard-set` 으로 위임한다.
+3. `guard-set`(의미 라벨 가드 기준선 재설정 — 노트 삭제 등 의도적 감소 후에만)은 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/graphrag-ops/tofugraph.sh" guard-set` 으로 위임한다.
+
+> 경로 해석 규칙: 본 플러그인 문서의 `${CLAUDE_PLUGIN_ROOT}` 는 Claude Code 가 플러그인 실행 시 넣어주는 플러그인 루트 환경변수다. 플러그인 밖(레포를 직접 clone 해서 쓰는 경우)이라면 그 자리에 **레포 루트 절대경로**를 넣어 읽으면 된다. Codex 에서는 각 `$tofugraph-*` 스킬(`.agent/skills/`)이 같은 계산을 안내한다.
