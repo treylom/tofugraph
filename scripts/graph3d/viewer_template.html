@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tofu GraphRAG — 3D 지식 우주</title>
+<style>
+  :root { --cream:#FAF6EF; --ink:#0a0f1e; --panel:rgba(13,19,38,.82); --line:rgba(199,185,156,.25); --accent:#C7B99C; --gold:#ffd77a; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Apple SD Gothic Neo','Pretendard',sans-serif; background:#05070f; overflow:hidden; color:#dfe6f3; }
+  #graph { width:100vw; height:100vh; }
+  /* 시네마틱 비네트 오버레이 */
+  #vignette { position:fixed; inset:0; pointer-events:none; z-index:5;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(2,4,10,.55) 100%); }
+  .panel { position:fixed; z-index:10; background:var(--panel); border:1px solid var(--line);
+    backdrop-filter: blur(10px); border-radius:14px; padding:12px 16px; box-shadow:0 6px 30px rgba(0,0,0,.5); }
+  /* 상단 중앙 — 검색 */
+  #searchbar { top:18px; left:50%; transform:translateX(-50%); display:flex; gap:8px; align-items:center; width:min(680px, 92vw); }
+  #q { flex:1; background:rgba(255,255,255,.06); border:1px solid var(--line); border-radius:9px;
+    padding:9px 12px; color:#eef2fb; font-size:14px; outline:none; }
+  #q:focus { border-color:var(--accent); }
+  .btn { border:1px solid var(--line); background:rgba(255,255,255,.05); color:#dfe6f3; border-radius:9px;
+    padding:9px 12px; font-size:12.5px; font-weight:700; cursor:pointer; white-space:nowrap; }
+  .btn:hover { background:rgba(199,185,156,.18); }
+  .btn.gold { border-color:var(--gold); color:var(--gold); }
+  .btn.on { background:var(--accent); color:#0a0f1e; border-color:var(--accent); }
+  /* 좌상단 타이틀 */
+  #hdr { top:18px; left:18px; max-width:min(320px, 24vw); }
+  #hdr h1 { font-size:15px; letter-spacing:.3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #hdr p { font-size:10.5px; color:#8d99b5; margin-top:3px; line-height:1.45; }
+  /* 우상단 통계 */
+  #stats { top:18px; right:18px; text-align:right; font-size:11.5px; color:#aab6d0; }
+  #stats b { color:#eef2fb; font-size:13px; }
+  /* 좌하단 범례/필터 */
+  #legend { bottom:18px; left:18px; font-size:11px; max-width:290px; max-height:44vh; overflow-y:auto; }
+  #legend .sec { font-weight:800; font-size:11.5px; margin:6px 0 3px; color:var(--accent); }
+  .chip { display:inline-flex; align-items:center; gap:5px; margin:2px 3px 2px 0; padding:3px 8px;
+    border:1px solid var(--line); border-radius:99px; cursor:pointer; user-select:none; font-size:10.5px; }
+  .chip.off { opacity:.32; }
+  .chip.on-spot { background:var(--gold); color:#0a0f1e; border-color:var(--gold); font-weight:800; }
+  .chip.on-spot i { color:#0a0f1e !important; }
+  .chip .sw { width:9px; height:9px; border-radius:50%; }
+  .chip .swl { width:14px; height:3px; border-radius:2px; }
+  /* 우하단 조작 힌트 */
+  #hint { bottom:18px; right:18px; font-size:10.5px; color:#7c88a5; text-align:right; }
+  /* 노드 정보 패널 */
+  #info { top:76px; right:18px; width:280px; display:none; }
+  #info h2 { font-size:14.5px; color:#fff; margin-bottom:6px; word-break:break-all; }
+  #info .meta { font-size:11px; color:#aab6d0; line-height:1.6; }
+  #info .row { display:flex; gap:6px; margin-top:9px; flex-wrap:wrap; }
+  /* 타임랩스 HUD */
+  #timehud { top:76px; left:50%; transform:translateX(-50%); font-size:20px; font-weight:800;
+    color:var(--gold); display:none; letter-spacing:1px; }
+  /* 경로 HUD */
+  #pathhud { bottom:80px; left:50%; transform:translateX(-50%); max-width:80vw; font-size:12px; display:none; }
+  #pathhud .chain { color:var(--gold); font-weight:700; }
+  /* 토스트 */
+  #toast { top:130px; left:50%; transform:translateX(-50%); font-size:12.5px; display:none; }
+  #loading { position:fixed; inset:0; display:flex; flex-direction:column; gap:14px; align-items:center; justify-content:center;
+    background:#05070f; color:var(--cream); font-size:15px; z-index:99; transition:opacity .8s; }
+  .spin { width:26px; height:26px; border:3px solid rgba(199,185,156,.25); border-top-color:var(--accent);
+    border-radius:50%; animation:sp 1s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="loading"><div class="spin"></div><div id="loadmsg">지식 우주 좌표 계산 중…</div></div>
+<div id="graph"></div>
+<div id="vignette"></div>
+
+<div class="panel" id="hdr">
+  <h1>🃏 Tofu GraphRAG · 3D 지식 우주</h1>
+  <p id="gen">실제 vault_graph.db 실시간 추출 · 점 = 지식 카드 · 색 = 마을 · 선 = 관계</p>
+</div>
+
+<div class="panel" id="searchbar">
+  <input id="q" placeholder="개념 검색 — 예: 서브에이전트, GraphRAG, 프롬프트…" autocomplete="off">
+  <button class="btn" id="btnLocal">이름 찾기</button>
+  <button class="btn gold" id="btnG">🔮 GraphRAG 검색</button>
+</div>
+
+<div class="panel" id="stats"></div>
+<div class="panel" id="legend"></div>
+<div class="panel" id="info">
+  <h2 id="iName"></h2>
+  <div class="meta" id="iMeta"></div>
+  <div class="row">
+    <button class="btn" id="iObsidian">📓 Obsidian에서 열기</button>
+    <button class="btn" id="iPathA">경로 시작점</button>
+    <button class="btn" id="iPathB">경로 끝점</button>
+  </div>
+</div>
+<div class="panel" id="timehud"></div>
+<div class="panel" id="timebar" style="bottom:24px; left:50%; transform:translateX(-50%); display:flex; gap:10px; align-items:center; padding:8px 14px;">
+  <span style="font-size:11px; color:#8d99b5">⏳ 시간여행</span>
+  <input type="range" id="tSlider" min="0" max="1000" value="1000" style="width:min(38vw,420px); accent-color:#ffd77a">
+  <span id="tLabel" style="font-size:12px; font-weight:700; color:var(--gold); min-width:84px">현재</span>
+  <button class="btn" id="tClear" style="display:none">해제</button>
+</div>
+<div class="panel" id="pathhud"></div>
+<div class="panel" id="toast"></div>
+<div class="panel" id="hint">🖱 드래그 회전 · 휠 확대 · 우클릭 이동 · 점 클릭 = 정보<br>
+  <button class="btn" id="btnPerf" style="margin-top:6px">⚡ 성능 모드</button>
+  <button class="btn" id="btnTime" style="margin-top:6px">⏳ 타임랩스</button>
+  <button class="btn" id="btnFly" style="margin-top:6px">🚁 플라이오버</button>
+  <button class="btn" id="btnReset">초기화</button>
+</div>
+
+<!--TOFUGRAPH:FG3D_JS-->
+<!--TOFUGRAPH:THREE_LOADER-->
+<!--TOFUGRAPH:GRAPH_DATA-->
+<script type="module">
+const THREE = await import(window.__THREE_MODULE_URL__);
+const COMM_BASE = ["#8b93a8","#ff6b6b","#5b8def","#ffa94d","#63e6be","#69db7c","#ffe066","#da77f2","#ff8fab","#c0a58e","#9ad8e0","#74c0fc","#f3a5c1"];
+const commColor = g => g===0 ? "#aab3c8" : (g < COMM_BASE.length ? COMM_BASE[g] : `hsl(${(g*137.508)%360} 82% 70%)`);
+const TYPE_COLORS = { cites:"#6aa9ff", parent:"#f2a13b", belongs_to:"#59c98f", sourced_from:"#c792ea",
+  implements:"#ff7b72", depends_on:"#ffd866", used_by:"#5fd7d0", contrasts:"#ff9da7",
+  precedes:"#b8c4ff", extends:"#ffc9a3",
+  // relabel 파이프라인이 만드는 13종 중 저빈도 3종. 빈도가 낮다고 빼면 그 선만 회색이 되는데,
+  // 회색은 "타입 없음"의 뜻이라 화면이 거짓말을 한다 — 있는 관계를 없는 것처럼 보이게 한다.
+  inspires:"#d9a5ff", criticizes:"#ff8f6b", created_by:"#8fd9a8",
+  // frontmatter 타입드 링크 계열(vault 가 직접 적어둔 관계). 코퍼스마다 있고 없고가 갈린다.
+  references:"#7fb3d5", contains:"#9ad0c2", aligns_with:"#c5d97f", part_of:"#a8c68f",
+  derived_from:"#d4a5c9", supersedes:"#e0b088", next:"#9fb8e8", prev:"#8fa5d0",
+  // 일반 관계 2종: export 의 GENERIC 필터가 켜져 있으면 여기 안 오지만, 필터를 끈 vault
+  // (= GraphRAG 를 갓 돌려 관계 타입이 아직 분해되지 않은 상태)에서는 링크의 대부분이 된다.
+  // 색이 없으면 fallback #8c96af 회색이라 화면이 회색 실뭉치가 된다 — 낮은 채도로 구분만.
+  mentions:"#7b86a6", related_to:"#8f7fa8" };
+const TYPE_KO = { cites:"인용한다", parent:"상위 개념", belongs_to:"~에 속한다", sourced_from:"~에서 나왔다",
+  implements:"구현한다", depends_on:"의존한다", used_by:"~가 쓴다", contrasts:"대비된다",
+  precedes:"~보다 먼저", extends:"확장한다",
+  inspires:"영감을 줬다", criticizes:"비판한다", created_by:"~가 만들었다",
+  references:"참조한다", contains:"포함한다", aligns_with:"결이 같다", part_of:"~의 일부",
+  derived_from:"~에서 파생", supersedes:"~을 대체", next:"다음", prev:"이전",
+  mentions:"언급한다", related_to:"관련 있다" };
+let VAULT_WIN = "vault";
+let COMM_LABELS = {};
+const commLabel = g => {
+  if (g === 0) return "기타";
+  const raw = COMM_LABELS[String(g)] || `마을 ${g}`;
+  return raw.replace(/-MOC.*$/, "").replace(/-M$/, "").replace(/-20\d.*$/, "").slice(0, 16);
+};
+
+let DATA=null, Graph=null, ADJ=null, NODES=[], sel=null, pathA=null, pathB=null;
+let hlNodes=new Set(), hlLinks=new Set(), dimmed=false;
+let typeOff=new Set(), commSpot=new Set();
+let timelineOn=false, introDone=false, pathObj=null, labelObjs={};
+let pathObjs=[], flowSprites=[], flowRAF=null, LINKTY=null, scrubT0=0, scrubT1=0;
+
+const $ = id => document.getElementById(id);
+const toast = (msg, ms=2600) => { $("toast").textContent=msg; $("toast").style.display="block";
+  clearTimeout(toast._t); toast._t=setTimeout(()=>$("toast").style.display="none", ms); };
+
+/* ---------- 글로우 스프라이트 (THREE 전역 노출 활용) ---------- */
+const texCache = {};
+function glowTexture(color){
+  if (texCache[color]) return texCache[color];
+  const c = document.createElement("canvas"); c.width=c.height=64;
+  const g = c.getContext("2d");
+  const grad = g.createRadialGradient(32,32,0,32,32,32);
+  grad.addColorStop(0, "#ffffff");
+  grad.addColorStop(0.13, "#ffffff");
+  grad.addColorStop(0.3, color);
+  grad.addColorStop(0.62, color);
+  grad.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle=grad; g.fillRect(0,0,64,64);
+  const t = new THREE.CanvasTexture(c);
+  texCache[color]=t; return t;
+}
+function makeSprite(n){
+  const color = commColor(n.group);
+  const m = new THREE.SpriteMaterial({ map:glowTexture(color), transparent:true,
+    blending:THREE.AdditiveBlending, depthWrite:false });
+  const s = new THREE.Sprite(m);
+  const sc = 6.5 + Math.sqrt(n.val)*3.4;
+  s.scale.set(sc, sc, 1);
+  n.__sprite = s;
+  return s;
+}
+function setNodeVisual(n, mode){ // mode: normal | dim | hl | spot
+  const s = n.__sprite; if (!s) return;
+  const base = 6.5+Math.sqrt(n.val)*3.4;
+  if (mode==="hl"){ s.material.opacity=1; const sc=Math.min(base*1.5, 34); s.scale.set(sc,sc,1); }
+  else if (mode==="spot"){ s.material.opacity=1; const sc=Math.min(base*1.2, 30); s.scale.set(sc,sc,1); }
+  else if (mode==="dim"){ s.material.opacity=0.05; s.scale.set(base,base,1); }
+  else { s.material.opacity=1.0; s.scale.set(base,base,1); }
+}
+function applyNodeVisuals(){
+  NODES.forEach(n=>{
+    let mode = "normal";
+    if (hlNodes.size) mode = hlNodes.has(n) ? "hl" : "dim";
+    else if (commSpot.size) mode = commSpot.has(n.group) ? "spot" : "dim";
+    setNodeVisual(n, mode);
+  });
+}
+
+function textSprite(text, color){
+  const fs = 46, pad = 14;
+  const c = document.createElement("canvas"), m0 = c.getContext("2d");
+  m0.font = `700 ${fs}px 'Apple SD Gothic Neo','Pretendard',sans-serif`;
+  c.width = Math.ceil(m0.measureText(text).width) + pad*2; c.height = fs + pad*2;
+  const g = c.getContext("2d");
+  g.font = `700 ${fs}px 'Apple SD Gothic Neo','Pretendard',sans-serif`;
+  g.shadowColor = "rgba(0,0,0,.95)"; g.shadowBlur = 12;
+  g.fillStyle = color; g.textBaseline = "middle";
+  g.fillText(text, pad, c.height/2);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map:new THREE.CanvasTexture(c),
+    transparent:true, depthWrite:false, opacity:.95 }));
+  s.scale.set(c.width/2.6, c.height/2.6, 1);
+  return s;
+}
+function addCommunityLabels(){
+  const byG = {};
+  NODES.forEach(n=>{ if(n.group>0){ (byG[n.group]=byG[n.group]||[]).push(n); } });
+  Object.entries(byG).sort((a,b)=>b[1].length-a[1].length).slice(0,20).forEach(([g, mem])=>{
+    const cx = mem.reduce((s,n)=>s+n.x,0)/mem.length, cy = mem.reduce((s,n)=>s+n.y,0)/mem.length,
+          cz = mem.reduce((s,n)=>s+n.z,0)/mem.length;
+    const s = textSprite(commLabel(+g), commColor(+g));
+    s.position.set(cx, cy + 26, cz);
+    Graph.scene().add(s); labelObjs[g] = s;
+  });
+}
+function refreshCommLabels(){
+  Object.entries(labelObjs).forEach(([g, s]) => { s.visible = !timelineOn && (!commSpot.size || commSpot.has(+g)); });
+}
+
+/* ---------- 별밭 ---------- */
+function addStars(scene){
+  const geo = new THREE.BufferGeometry();
+  const N=1600, pos=new Float32Array(N*3);
+  for(let i=0;i<N;i++){
+    const r = 2600 + Math.random()*1800, th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+    pos[i*3]=r*Math.sin(ph)*Math.cos(th); pos[i*3+1]=r*Math.sin(ph)*Math.sin(th); pos[i*3+2]=r*Math.cos(ph);
+  }
+  geo.setAttribute("position", new THREE.BufferAttribute(pos,3));
+  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color:0x8899bb, size:1.6, sizeAttenuation:true, transparent:true, opacity:.7 })));
+}
+
+/* ---------- 초기화 ---------- */
+async function boot(){
+  DATA = window.__GRAPH_DATA__;
+  VAULT_WIN = (DATA.meta && DATA.meta.vault_name) || VAULT_WIN;
+  COMM_LABELS = DATA.meta.comm_labels || {};
+  $("gen").textContent = `vault_graph.db 추출 (${DATA.meta.generated_kst}) · 점=지식 카드 · 색=마을 · 선=관계`;
+
+  NODES = DATA.nodes.map(n=>({ id:n.i, name:n.n, group:n.g, val:Math.max(1,Math.sqrt(n.d)), deg:n.d, p:n.p, t:n.t }));
+  const links = DATA.links.map(l=>({ source:l.s, target:l.t, ty:l.y }));
+  LINKTY = new Map();
+  DATA.links.forEach(l=>{ LINKTY.set(l.s+"|"+l.t, l.y); LINKTY.set(l.t+"|"+l.s, l.y); });
+  const timedAll = DATA.nodes.filter(n=>n.t).map(n=>n.t);
+  scrubT0 = Math.min(...timedAll); scrubT1 = Math.max(...timedAll);
+
+  ADJ = new Map();
+  for(let k=0;k<DATA.adj.length;k+=2){
+    const a=DATA.adj[k], b=DATA.adj[k+1];
+    if(!ADJ.has(a)) ADJ.set(a,[]); if(!ADJ.has(b)) ADJ.set(b,[]);
+    ADJ.get(a).push(b); ADJ.get(b).push(a);
+  }
+
+  Graph = ForceGraph3D()($("graph"))
+    .backgroundColor("#05070f")
+    .nodeThreeObject(makeSprite)
+    .nodeLabel(n=>`<div style="background:rgba(250,246,239,.96);color:#1E2A44;padding:5px 10px;border-radius:7px;font-size:12.5px;font-weight:700">${n.name}</div>`)
+    .linkVisibility(false)
+    .nodeVisibility(n=>(!timelineOn || n.__shown))
+    .warmupTicks(220).cooldownTicks(0)
+    .onNodeClick(focusNode)
+    .onBackgroundClick(()=>{ hidePanel(); clearHighlight(); });
+
+  Graph.graphData({ nodes:NODES, links });
+  // 주제(마을) 분리: 같은 마을 = 가깝게, 다른 마을 = 멀게 + 전체 반발력 강화
+  const grp = x => (typeof x === "object" ? x.group : NODES[x].group);
+  Graph.d3Force("link").distance(l => grp(l.source) === grp(l.target) ? 30 : 170);
+  Graph.d3Force("charge").strength(-85);
+  // 마을별 구면 앵커(골든 스파이럴) — 주제가 다르면 공간도 멀게
+  const NG = 41, R = 620, anchors = {0:{x:0,y:0,z:0}};
+  for (let g=1; g<NG; g++){
+    const i=g-0.5, phi=Math.acos(1-2*i/NG), th=Math.PI*(1+Math.sqrt(5))*i;
+    anchors[g] = { x:R*Math.sin(phi)*Math.cos(th), y:R*Math.sin(phi)*Math.sin(th), z:R*Math.cos(phi) };
+  }
+  const clusterForce = alpha => {
+    for (const n of NODES){
+      const a = anchors[n.group]; if(!a) continue;
+      const k = (n.group===0 ? 0.012 : 0.055) * alpha;
+      n.vx += (a.x-n.x)*k; n.vy += (a.y-n.y)*k; n.vz += (a.z-n.z)*k;
+    }
+  };
+  clusterForce.initialize = ()=>{};
+  Graph.d3Force("cluster", clusterForce);
+  addStars(Graph.scene());
+  Graph.scene().fog = new THREE.Fog(0x05070f, 1200, 4200);
+
+  Graph.onEngineStop(()=>{
+    if (introDone) return;
+    introDone = true;
+    addCommunityLabels();
+    refreshLinks();
+    $("loading").style.opacity="0";
+    setTimeout(()=>$("loading").style.display="none", 850);
+    cinematicIntro();
+  });
+
+  renderStats(); renderLegend(); fpsGuard();
+}
+
+function cinematicIntro(){
+  Graph.cameraPosition({x:0,y:0,z:3300});
+  Graph.cameraPosition({x:120,y:60,z:1050}, {x:0,y:0,z:0}, 4200);
+  const ctl = Graph.controls();
+  ctl.autoRotate = true; ctl.autoRotateSpeed = 0.45;
+  const stop = ()=>{ ctl.autoRotate=false;
+    ["pointerdown","wheel"].forEach(e=>$("graph").removeEventListener(e, stop)); };
+  setTimeout(()=>["pointerdown","wheel"].forEach(e=>$("graph").addEventListener(e, stop)), 4300);
+}
+
+/* ---------- HUD ---------- */
+function renderStats(){
+  const shown = NODES.length;
+  $("stats").innerHTML = `<b>의미 관계망</b><br>지식 카드 ${shown.toLocaleString()} · 관계 ${DATA.links.length.toLocaleString()}<br>` +
+    `<span style="color:#7c88a5">타임라인 좌표 ${DATA.meta.t_coverage}</span><br>` +
+    `<span id="fps" style="color:#63e6be;font-weight:700">FPS —</span>`;
+}
+function renderLegend(){
+  const typeCount = {};
+  DATA.links.forEach(l=>typeCount[l.y]=(typeCount[l.y]||0)+1);
+  const tRows = Object.entries(typeCount).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([ty,c])=>
+    `<span class="chip ${typeOff.has(ty)?"off":""}" data-ty="${ty}"><span class="swl" style="background:${TYPE_COLORS[ty]||"#8b95ab"}"></span>${TYPE_KO[ty]||ty} <i style="color:#7c88a5;font-style:normal">${c.toLocaleString()}</i></span>`).join("");
+  const commCount = {};
+  NODES.forEach(n=>commCount[n.group]=(commCount[n.group]||0)+1);
+  const cRows = Object.entries(commCount).sort((a,b)=>b[1]-a[1]).slice(0,13).map(([g,c])=>
+    `<span class="chip ${commSpot.has(+g)?"on-spot":""}" data-g="${g}"><span class="sw" style="background:${commColor(+g)}"></span>${commLabel(+g)} <i style="color:#7c88a5;font-style:normal">${c.toLocaleString()}</i></span>`).join("");
+  $("legend").innerHTML = `<div class="sec">관계(선) — 클릭으로 켜고 끄기</div>${tRows}<div class="sec">마을(점 색) — 클릭 = 그 마을만 빛내기</div>${cRows}`;
+  $("legend").querySelectorAll("[data-ty]").forEach(el=>el.onclick=()=>{
+    const ty=el.dataset.ty; typeOff.has(ty)?typeOff.delete(ty):typeOff.add(ty);
+    el.classList.toggle("off"); refreshLinks(); });
+  $("legend").querySelectorAll("[data-g]").forEach(el=>el.onclick=()=>{
+    const g=+el.dataset.g;
+    hlNodes.clear(); hlLinks.clear(); $("pathhud").style.display="none";
+    commSpot.has(g)?commSpot.delete(g):commSpot.add(g);
+    el.classList.toggle("on-spot");
+    applyNodeVisuals(); refreshLinks(); refreshCommLabels(); renderStats(); });
+}
+
+/* ---------- 노드 포커스·패널 ---------- */
+function flyTo(n, dist=90, ms=1300){
+  const d = Math.hypot(n.x,n.y,n.z)||1, ratio = 1 + dist/d;
+  Graph.cameraPosition({x:n.x*ratio,y:n.y*ratio,z:n.z*ratio}, n, ms);
+}
+function focusNode(n){
+  sel=n; flyTo(n);
+  $("iName").textContent = n.name;
+  const dt = n.t ? new Date(n.t*1000).toISOString().slice(0,10) : "—";
+  $("iMeta").innerHTML = `연결 ${n.deg}개 · <span style="color:${commColor(n.group)}">${commLabel(n.group)}</span><br>` +
+    (n.p?`출처 노트: ${n.p}`:`출처 노트 없음(개념 카드)`) + `<br>타임라인: ${dt}`;
+  $("iObsidian").style.display = n.p ? "" : "none";
+  $("info").style.display="block";
+}
+function hidePanel(){ $("info").style.display="none"; sel=null; }
+$("iObsidian").onclick = ()=>{
+  if(!sel||!sel.p) return;
+  const f = encodeURIComponent(sel.p.replace(/\.md$/,""));
+  window.open(`obsidian://open?vault=${encodeURIComponent(VAULT_WIN)}&file=${f}`, "_self");
+  toast("Obsidian으로 여는 중 — 안 열리면 vault 이름·동명 파일 확인");
+};
+
+/* ---------- 하이라이트 ---------- */
+function refreshNodes(){
+  Graph.nodeVisibility(n=>(!timelineOn || n.__shown));
+}
+// 링크 불투명도는 고정값이면 vault 마다 화면이 갈린다. 노드당 링크 수(밀도)가 높은 vault 는
+// 점 하나를 선 수십 개가 둘러싸서, 선 색이 무엇이든 점(마을 색)이 덮인다.
+//   실측 2026-07-26:  맥 7,718노드/17,970링크 = 2.33/노드  → 점이 보임
+//                     WSL  495노드/ 9,031링크 = 18.24/노드 → 흰 실뭉치, 마을색 안 보임
+// 그래서 기준 밀도(3)를 넘으면 반비례로 낮춘다. 하한 0.06 — 그 아래면 선이 아예 안 보인다.
+// ⚠️ 계수(3 · 0.06 · 0.32)는 위 두 지점만 보고 정한 값이고 중간 밀도에서 검증 안 했다.
+const baseLinkOpacity = () => {
+  const d = DATA.links.length / Math.max(1, NODES.length);
+  return Math.max(0.06, Math.min(0.32, 0.32 * 3 / Math.max(d, 0.01)));
+};
+
+let linkMesh = null;
+function refreshLinks(){
+  // 링크 11.8K = 개별 Line 객체면 draw call 11.8K(윈도우 ANGLE 병목) → 단일 병합 LineSegments = 1 draw call
+  if (linkMesh){ Graph.scene().remove(linkMesh); linkMesh.geometry.dispose(); linkMesh.material.dispose(); linkMesh=null; }
+  const pos=[], col=[], c=new THREE.Color();
+  for (const l of Graph.graphData().links){
+    const s=l.source, t=l.target;
+    if (typeof s!=="object" || typeof t!=="object") continue;
+    if (typeOff.has(l.ty)) continue;
+    if (timelineOn && !(s.__shown && t.__shown)) continue;
+    if (hlNodes.size){ if (!(hlLinks.has(l) || (hlNodes.has(s)&&hlNodes.has(t)))) continue; }
+    else if (commSpot.size){ if (!(commSpot.has(s.group)&&commSpot.has(t.group))) continue; }
+    c.set(hlLinks.has(l) ? "#ffd77a" : (TYPE_COLORS[l.ty]||"#8c96af"));
+    pos.push(s.x,s.y,s.z, t.x,t.y,t.z);
+    col.push(c.r,c.g,c.b, c.r,c.g,c.b);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(col,3));
+  linkMesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+    vertexColors:true, transparent:true, depthWrite:false,
+    opacity:(hlNodes.size||commSpot.size)?0.8:baseLinkOpacity() }));
+  Graph.scene().add(linkMesh);
+}
+function clearHighlight(){
+  if (pathObj){ Graph.scene().remove(pathObj); pathObj=null; }
+  pathObjs.forEach(o=>Graph.scene().remove(o)); pathObjs=[];
+  flowSprites.forEach(s=>Graph.scene().remove(s.obj)); flowSprites=[];
+  if (flowRAF){ cancelAnimationFrame(flowRAF); flowRAF=null; }
+  hlNodes.clear(); hlLinks.clear();
+  applyNodeVisuals();
+  refreshLinks(); $("pathhud").style.display="none";
+}
+function highlight(nodes, links){
+  hlNodes=new Set(nodes); hlLinks=new Set(links||[]);
+  applyNodeVisuals();
+  refreshLinks();
+}
+
+/* ---------- 검색 ---------- */
+function localSearch(){
+  commSpot.clear(); renderLegend(); clearHighlight();
+  const q=$("q").value.trim().toLowerCase(); if(!q) return;
+  const hits = NODES.filter(n=>n.name.toLowerCase().includes(q)).sort((a,b)=>b.deg-a.deg).slice(0,12);
+  if(!hits.length){ toast(`"${q}" 이름 매칭 0건 — GraphRAG 검색(뜻 검색)을 눌러보세요`); return; }
+  highlight(hits); flyTo(hits[0], 120); focusNode(hits[0]);
+  toast(`이름 매칭 ${hits.length}건 — 가장 연결 많은 카드로 이동`);
+}
+async function gSearch(){
+  const q=$("q").value.trim(); if(!q) return;
+  clearHighlight();
+  $("btnG").textContent="🔮 검색 중…"; $("btnG").disabled=true;
+  try{
+    const r = await fetch(`/api/gsearch?q=${encodeURIComponent(q)}&top_k=24`);
+    if(!r.ok){ const e=await r.json().catch(()=>({}));
+      toast(e.error==="search server warming up"?"검색 엔진 워밍업 중 — 잠시 후 재시도":"검색 서버 응답 없음 — 이름 찾기로 폴백");
+      localSearch(); return; }
+    const d = await r.json();
+    const names = new Map(NODES.map(n=>[n.name, n]));
+    const hits=[], missed=[];
+    (d.results||[]).forEach(res=>{
+      const n = names.get(res.entity) ||
+        NODES.find(x=>x.p && res.source_note && x.p===res.source_note) ||
+        NODES.find(x=>x.name.toLowerCase()===String(res.entity||"").toLowerCase());
+      n ? hits.push(n) : missed.push(res.entity);
+    });
+    // 이름 매칭 합집합 (희귀 고유명사가 의미 랭킹에 묻히는 것 보정 — 예: 'fable')
+    const ql = q.toLowerCase(), have = new Set(hits.map(n=>n.id));
+    const nameHits = NODES.filter(n=>n.name.toLowerCase().includes(ql) && !have.has(n.id))
+                          .sort((a,b)=>b.deg-a.deg).slice(0,12);
+    const all = hits.concat(nameHits);
+    if(!all.length){ toast("검색 결과가 현재 뷰(의미 관계망)에 없음 — 이름 찾기 폴백"); localSearch(); return; }
+    highlight(all); flyTo(all[0], 110); focusNode(all[0]);
+    toast(`🔮 GraphRAG ${d.results.length}건 + 이름 매칭 ${nameHits.length}건 → 화면 표시 ${all.length}건`);
+    if(all.length>=2) relateHits(all);
+  } catch(e){ toast("검색 실패 — 이름 찾기로 폴백"); localSearch(); }
+  finally { $("btnG").textContent="🔮 GraphRAG 검색"; $("btnG").disabled=false; }
+}
+$("btnLocal").onclick=localSearch; $("btnG").onclick=gSearch;
+$("q").addEventListener("keydown", e=>{ if(e.key==="Enter") e.shiftKey?localSearch():gSearch(); });
+
+/* ---------- 경로 찾기 (양방향 BFS) ---------- */
+$("iPathA").onclick=()=>{ pathA=sel; toast(`경로 시작점 = ${sel.name}`); tryPath(); };
+$("iPathB").onclick=()=>{ pathB=sel; toast(`경로 끝점 = ${sel.name}`); tryPath(); };
+function bfsPath(a, b){
+  if(a===b) return [a];
+  const prev=new Map([[a,null]]), queue=[a];
+  while(queue.length){
+    const cur=queue.shift();
+    for(const nb of (ADJ.get(cur)||[])){
+      if(prev.has(nb)) continue;
+      prev.set(nb,cur);
+      if(nb===b){ const path=[b]; let p=cur; while(p!==null){path.push(p); p=prev.get(p);} return path.reverse(); }
+      queue.push(nb);
+    }
+  }
+  return null;
+}
+function tryPath(){
+  if(!pathA||!pathB||pathA===pathB) return;
+  const ids = bfsPath(pathA.id, pathB.id);
+  if(!ids){ toast("두 카드를 잇는 경로가 없습니다"); return; }
+  const nset = new Set(ids), pnodes = ids.map(i=>NODES[i]);
+  const plinks = [];
+  Graph.graphData().links.forEach(l=>{
+    const s=l.source.id??l.source, t=l.target.id??l.target;
+    for(let k=0;k<ids.length-1;k++)
+      if((s===ids[k]&&t===ids[k+1])||(t===ids[k]&&s===ids[k+1])) plinks.push(l);
+  });
+  highlight(pnodes, plinks);
+  // 경로 전체(회색 무이름표 구간 포함)를 금색 오버레이 라인으로 — 렌더 링크 유무와 무관
+  const geo = new THREE.BufferGeometry().setFromPoints(pnodes.map(n=>new THREE.Vector3(n.x,n.y,n.z)));
+  pathObj = new THREE.Line(geo, new THREE.LineBasicMaterial({ color:0xffd77a, transparent:true, opacity:0.95 }));
+  Graph.scene().add(pathObj);
+  $("pathhud").innerHTML = `<b>${ids.length-1}단계 연결</b> — <span class="chain">${pnodes.map(n=>n.name).join(" → ")}</span><br><span style="color:#8d99b5">(회색 무이름표 관계 포함 최단 경로 · 표시는 금색)</span>`;
+  $("pathhud").style.display="block";
+  const mid = pnodes[Math.floor(pnodes.length/2)];
+  flyTo(mid, 180+ids.length*30, 1600);
+  pathA=pathB=null;
+}
+
+/* ---------- 질의 근거 관계망 (dataflow) ---------- */
+function relateHits(hits){
+  const seen = new Set();
+  const top = hits.filter(n=>n && Number.isFinite(n.x) && !seen.has(n.id) && seen.add(n.id)).slice(0,6);
+  const HOPCAP = 5;
+  if(top.length<2) return;
+  const unionIds = new Set(top.map(n=>n.id));
+  const paths = [];
+  for(let i=0;i<top.length;i++) for(let j=i+1;j<top.length;j++){
+    const ids = bfsPath(top[i].id, top[j].id);
+    if(ids && ids.length-1 <= HOPCAP && ids.length>1){ paths.push(ids); ids.forEach(x=>unionIds.add(x)); }
+  }
+  if(!paths.length){
+    $("pathhud").innerHTML = `<b>근거 ${top.length}개</b> — 서로 직접 연결 경로 없음(독립 근거)` + timeStrip(top);
+    $("pathhud").style.display="block"; return;
+  }
+  highlight([...unionIds].map(i=>NODES[i]));
+  // 경로 오버레이 + 흐름 입자
+  paths.forEach(ids=>{
+    const pts = ids.map(i=>NODES[i]).filter(n=>n && Number.isFinite(n.x)).map(n=>new THREE.Vector3(n.x, n.y, n.z));
+    if(pts.length<2) return;
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color:0xffd77a, transparent:true, opacity:0.8 }));
+    Graph.scene().add(line); pathObjs.push(line);
+    for(let k=0;k<3;k++){
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:glowTexture("#ffe9a8"), transparent:true, opacity:0.95, blending:THREE.AdditiveBlending, depthWrite:false, depthTest:false }));
+      sp.scale.set(18,18,1); sp.renderOrder = 999; Graph.scene().add(sp);
+      flowSprites.push({ obj:sp, pts, ph:k/3 });
+    }
+  });
+  let t0f = performance.now();
+  const step = now=>{
+    const u = ((now-t0f)/2600) % 1;
+    flowSprites.forEach(f=>{
+      if(f.pts.length<2) return;
+      const v = (u + f.ph) % 1, segF = v*(f.pts.length-1), k = Math.max(0, Math.min(Math.floor(segF), f.pts.length-2)), r = segF-k;
+      const a=f.pts[k], b=f.pts[k+1];
+      if(a && b) f.obj.position.lerpVectors(a, b, r);
+      const s = 18 * (0.75 + 0.45*Math.sin(now/180 + f.ph*6.28));
+      f.obj.scale.set(s, s, 1);
+    });
+    flowRAF = requestAnimationFrame(step);
+  };
+  if(flowRAF) cancelAnimationFrame(flowRAF);
+  flowRAF = requestAnimationFrame(step);
+  // 대표 체인(최단 경로 1개) 관계 타입 라벨
+  const best = paths.slice().sort((a,b)=>a.length-b.length)[0];
+  const chain = best.map((id,ix)=> ix<best.length-1
+    ? `${NODES[id].name} <span style="color:#8d99b5">—${LINKTY.get(best[ix]+"|"+best[ix+1])||"관련"}→</span> `
+    : NODES[id].name).join("");
+  $("pathhud").innerHTML = `<b>🕸 근거 관계망</b> — 근거 ${top.length}개 · 연결 경로 ${paths.length}개 (금색 흐름)<br><span class="chain">${chain}</span>` + timeStrip(top);
+  $("pathhud").style.display="block";
+}
+function timeStrip(nodes){
+  const ts = nodes.filter(n=>n.t).map(n=>n.t);
+  if(ts.length<2) return "";
+  const d = t=>new Date(t*1000).toISOString().slice(0,10);
+  return `<br><span style="color:#8d99b5">⏳ 이 근거들의 축적 기간: <b style="color:var(--gold)">${d(Math.min(...ts))} → ${d(Math.max(...ts))}</b></span>`;
+}
+
+/* ---------- 타임라인 스크럽 ---------- */
+let scrubSorted=null;
+function scrubTo(v){ // v: 0~1000 — 분위수 매핑(mtime 쏠림 보정: 슬라이더 = 지식 축적량 기준 균등 이동)
+  if(v>=1000){ scrubClear(); return; }
+  if(!scrubSorted) scrubSorted = NODES.filter(n=>n.t).map(n=>n.t).sort((a,b)=>a-b);
+  const cut = scrubSorted[Math.max(0, Math.floor((v/1000)*(scrubSorted.length-1)))];
+  timelineOn = true;
+  NODES.forEach(n=>{ n.__shown = n.t ? (n.t<=cut) : false; });
+  refreshNodes(); refreshLinks(); refreshCommLabels();
+  const shown = NODES.filter(n=>n.__shown).length;
+  $("tLabel").textContent = new Date(cut*1000).toISOString().slice(0,10);
+  $("timehud").style.display="block";
+  $("timehud").textContent = `${new Date(cut*1000).toISOString().slice(0,10)} · ${shown.toLocaleString()}장`;
+  $("tClear").style.display="inline-block";
+}
+function scrubClear(){
+  timelineOn=false; NODES.forEach(n=>delete n.__shown);
+  refreshNodes(); refreshLinks(); refreshCommLabels();
+  $("tSlider").value=1000; $("tLabel").textContent="현재";
+  $("timehud").style.display="none"; $("tClear").style.display="none";
+}
+let scrubTh=null;
+$("tSlider").addEventListener("input", e=>{
+  if(scrubTh) return;
+  scrubTh = setTimeout(()=>{ scrubTo(+e.target.value); scrubTh=null; }, 60);
+});
+$("tClear").onclick=scrubClear;
+
+/* ---------- 플라이오버 투어 (구글 어스식 순항) ---------- */
+let flyOn=false, flyTimer=null;
+function flyover(){
+  if(flyOn){ flyStop(); return; }
+  flyOn=true; $("btnFly").classList.add("on"); $("btnFly").textContent="🚁 투어 중지";
+  clearHighlight(); hidePanel();
+  // 마을(커뮤니티)별 크기 순 상위 10곳 — 각 마을의 무게중심을 순항
+  const byG = {};
+  NODES.forEach(n=>{ (byG[n.group] = byG[n.group] || []).push(n); });
+  const stops = Object.entries(byG).filter(([g,ns])=>+g!==0 && ns.length>=30)
+    .sort((a,b)=>b[1].length-a[1].length).slice(0,10)
+    .map(([g,ns])=>{
+      const c = ns.reduce((a,n)=>({x:a.x+n.x/ns.length, y:a.y+n.y/ns.length, z:a.z+n.z/ns.length}), {x:0,y:0,z:0});
+      return { g:+g, c, n:ns.length, label: COMM_LABELS[g] || `마을 ${g}` };
+    });
+  let i = -1;
+  const HOP = 5200;
+  const next = ()=>{
+    if(!flyOn) return;
+    i = (i+1) % stops.length;
+    const s = stops[i];
+    const d = Math.max(180, Math.sqrt(s.n)*22);
+    // 마을 상공을 비스듬히 내려다보는 시점
+    Graph.cameraPosition({ x:s.c.x*1.15+d*0.5, y:s.c.y*1.15+d*0.6, z:s.c.z*1.15+d*0.5 }, s.c, HOP-700);
+    commSpot.clear(); commSpot.add(s.g); applyNodeVisuals(); refreshLinks(); refreshCommLabels();
+    toast(`🚁 ${i+1}/${stops.length} — ${s.label} (지식 카드 ${s.n.toLocaleString()}장)`);
+    flyTimer = setTimeout(next, HOP);
+  };
+  next();
+}
+function flyStop(){
+  flyOn=false; if(flyTimer){ clearTimeout(flyTimer); flyTimer=null; }
+  $("btnFly").classList.remove("on"); $("btnFly").textContent="🚁 플라이오버";
+  commSpot.clear(); applyNodeVisuals(); refreshLinks(); refreshCommLabels(); renderLegend();
+}
+$("btnFly").onclick=flyover;
+// 사용자가 직접 조작하면 투어 자동 종료 (구글 어스 관례)
+["pointerdown","wheel"].forEach(e=>$("graph").addEventListener(e, ()=>{ if(flyOn) flyStop(); }));
+
+/* ---------- 타임랩스 ---------- */
+async function timelapse(){
+  if(timelineOn) return;
+  timelineOn=true; clearHighlight(); hidePanel();
+  const timed = NODES.filter(n=>n.t).sort((a,b)=>a.t-b.t);
+  const untimed = NODES.filter(n=>!n.t);
+  NODES.forEach(n=>{n.__shown=false;});
+  refreshNodes(); refreshLinks(); refreshCommLabels();
+  $("timehud").style.display="block";
+  const t0=timed[0].t, t1=timed[timed.length-1].t, steps=110, dur=24000;
+  let k=0;
+  await new Promise(res=>{
+    const iv=setInterval(()=>{
+      k++;
+      const cut = t0 + (t1-t0)*(k/steps);
+      timed.forEach(n=>{ if(!n.__shown && n.t<=cut) n.__shown=true; });
+      refreshNodes();
+      if (k % 3 === 0 || k>=steps) refreshLinks();
+      $("timehud").textContent = new Date(cut*1000).toISOString().slice(0,10) +
+        `  ·  ${timed.filter(n=>n.__shown).length.toLocaleString()}장`;
+      if(k>=steps){ clearInterval(iv); res(); }
+    }, dur/steps);
+  });
+  untimed.forEach(n=>n.__shown=true);
+  refreshNodes(); refreshLinks();
+  setTimeout(()=>{ $("timehud").style.display="none"; timelineOn=false;
+    NODES.forEach(n=>delete n.__shown); refreshNodes(); refreshLinks(); refreshCommLabels(); }, 2500);
+}
+let perfMode=false;
+$("btnPerf").onclick=()=>{
+  perfMode=!perfMode;
+  $("btnPerf").classList.toggle("on", perfMode);
+  Graph.renderer().setPixelRatio(perfMode ? 1 : Math.min(window.devicePixelRatio, 2));
+  Graph.linkOpacity(perfMode ? 0.14 : 0.22);
+  toast(perfMode ? "⚡ 성능 모드 ON — 해상도를 낮춰 부드러움 우선 (화질 약간↓)" : "성능 모드 OFF — 원래 화질");
+};
+$("btnTime").onclick=timelapse;
+$("btnReset").onclick=()=>{ clearHighlight(); hidePanel(); typeOff.clear(); commSpot.clear();
+  renderLegend(); renderStats(); refreshNodes(); refreshLinks(); refreshCommLabels(); Graph.cameraPosition({x:120,y:60,z:1050},{x:0,y:0,z:0},1500); };
+
+/* ---------- FPS 가드 (LOD 자동 솎기 — 스펙 B안) ---------- */
+function fpsGuard(){
+  let frames=0, last=performance.now(), lowStreak=0, tier=0;
+  const tiers=[0, 2, 3, 5]; // degree 미만 숨김 임계
+  function loop(now){
+    frames++;
+    if(now-last>=1000){
+      const fps=frames; frames=0; last=now;
+      const el=document.getElementById("fps");
+      if(el) el.textContent = `FPS ${fps}` + (perfMode?" · ⚡":"") + (tier?` · 솎기${tier}단`:"");
+      if(introDone && !timelineOn){
+        if(fps<30) lowStreak++; else lowStreak=0;
+        if(lowStreak>=3){
+          if(!perfMode){ $("btnPerf").click(); lowStreak=0; }
+          else if(tier<tiers.length-1){
+            tier++; lowStreak=0;
+            const thr=tiers[tier];
+            NODES.forEach(n=>{ if(n.deg<thr && n.__sprite) n.__sprite.visible=false; });
+            toast(`부드러움 유지를 위해 연결 ${thr}개 미만 카드를 잠시 숨겼습니다 (자동 솎기 ${tier}단)`);
+          }
+        }
+      }
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+}
+
+window.__G = () => Graph;
+window.__dbg = () => ({
+  hl: hlLinks.size,
+  visFn: String(Graph.linkVisibility()).slice(0,120),
+  sampleLinks: Graph.graphData().links.slice(0,3).map(l=>({ty:l.ty, hasObj: !!l.__lineObj, objVisible: l.__lineObj?.visible})),
+  hiddenCount: Graph.graphData().links.filter(l=>l.__lineObj && !l.__lineObj.visible).length,
+  totalLinks: Graph.graphData().links.length,
+});
+window.__pathDemo = () => { document.getElementById("q").value="클로드"; document.getElementById("btnLocal").click();
+  setTimeout(()=>{ document.getElementById("iPathA").click(); document.getElementById("q").value="옵시디언";
+    document.getElementById("btnLocal").click(); setTimeout(()=>document.getElementById("iPathB").click(), 600); }, 600); };
+boot();
+</script>
+</body>
+</html>

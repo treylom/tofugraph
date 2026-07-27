@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 로컬 실행 산출물 (인덱스·로그·생성 데이터 — 배포 대상 아님)
+.team-os/
+*.db
+*.log
+
+# 3D 뷰어 생성물 (build 로 만들어지는 결과물)
+scripts/graph3d/out/
