@@ -106,13 +106,23 @@ server_start_hint() {
   # 적발). 기동 명령은 엔진에 실재(search_server.py 도크스트링)하지만 수강생이
   # 읽는 층에 노출이 없었다 — 그 한 줄을 여기서 표면화한다.
   local py; py=$(resolve_python)
+  # 기동 안내의 host/port 는 지금 doctor 가 실제로 탐침한 주소($API)에서 파생한다 —
+  # GRAPHRAG_API_URL 을 바꿔 쓴 사용자에게 8400 하드코딩 안내는 헛다리(2026-07-28 손석희 실측).
+  local hint_host hint_port hp
+  hp="${API#*://}"; hp="${hp%%/*}"
+  hint_host="${hp%%:*}"; hint_port="${hp##*:}"
+  [ "$hint_host" = "$hint_port" ] && hint_port=8400
   if [ -n "$ROOT" ] && [ -f "$ROOT/scripts/search_server.py" ]; then
     echo "  서버 수동 기동(한 줄, 새 터미널 권장):"
-    echo "    cd \"$ROOT/scripts\" && $py -m uvicorn search_server:app --host 127.0.0.1 --port 8400"
+    echo "    cd \"$ROOT/scripts\" && $py -m uvicorn search_server:app --host $hint_host --port $hint_port"
     echo "    (그 터미널을 계속 점유합니다 — 멈추려면 Ctrl+C. uvicorn 이 없다면: $py -m pip install 'uvicorn[standard]' fastapi)"
   else
-    echo "  서버 수동 기동: 엔진 scripts/ 폴더에서  python3 -m uvicorn search_server:app --host 127.0.0.1 --port 8400"
+    echo "  서버 수동 기동: 엔진 scripts/ 폴더에서  python3 -m uvicorn search_server:app --host $hint_host --port $hint_port"
   fi
+  case "$API" in
+    http://127.0.0.1:8400*|http://localhost:8400*) : ;;
+    *) echo "  (지금 점검한 주소 = $API — GRAPHRAG_API_URL 로 바꾼 값입니다. 위 기동 명령도 그 주소에 맞춰 표시했습니다.)" ;;
+  esac
 }
 
 # ---------------------------------------------------------------- doctor ----
