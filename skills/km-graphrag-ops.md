@@ -6,7 +6,7 @@ description: Use when needing GraphRAG 구축·운영·수리 실행. build/sear
 # km-graphrag-ops: GraphRAG 구축·운영·수리 (실행 계층)
 
 > **역할 경계**: 선택적 어댑터입니다 — Knowledge Manager 코어 기능은 이 스킬 없이 완전 동작하며,
-> GraphRAG 엔진(인덱서·서버)은 이 스킬이 번들하지 않고 별도 설치물([ThisCode](https://github.com/treylom/ThisCode) vendor)을 운영합니다.
+> GraphRAG 엔진(인덱서·서버)은 이 플러그인에 동봉되어 있어 따로 설치하지 않아도 되며, 이미 [ThisCode](https://github.com/treylom/ThisCode) 로 설치해 둔 환경이면 그 설치본을 우선 사용합니다.
 > 기존 km-graphrag-search(검색 전략)·km-graphrag-sync(frontmatter 동기화)·km-graphrag-report(보고서)가 *이론·전략* 계층이라면, 본 스킬은 *설치·구축·운영·수리 실행* 계층입니다.
 
 ## 진입점
@@ -15,7 +15,7 @@ description: Use when needing GraphRAG 구축·운영·수리 실행. build/sear
 scripts/graphrag-ops/tofugraph.sh {doctor|status|heal|monitor|install-daemon|uninstall-daemon|guard-set|build|search <q>}
 ```
 
-환경변수(전부 선택 — 미지정 시 자동 감지/기본값): `GRAPHRAG_ROOT`(엔진 홈, 기본 = cwd에서 위로 걸으며 `.team-os/graphrag` 탐지) · `GRAPHRAG_API_URL`(기본 `http://127.0.0.1:8400`) · `GRAPHRAG_SERVICE_LABEL`(서비스명, 기본 = launchd/systemd에서 'graphrag' 자동 탐지) · `NTFY_TOPIC`(데몬 경보 푸시, 기본 꺼짐).
+환경변수(전부 선택 — 미지정 시 자동 감지/기본값): `GRAPHRAG_ROOT`(엔진 홈 — 미지정 시 cwd에서 위로 걸으며 `.team-os/graphrag` 설치본을 먼저 찾고, 없으면 플러그인에 동봉된 `engine/` 을 씁니다) · `GRAPHRAG_API_URL`(기본 `http://127.0.0.1:8400`) · `GRAPHRAG_SERVICE_LABEL`(서비스명, 기본 = launchd/systemd에서 'graphrag' 자동 탐지) · `NTFY_TOPIC`(데몬 경보 푸시, 기본 꺼짐).
 
 ## 동사 (핵심 4 + 운영 5)
 
