@@ -1,6 +1,6 @@
 ---
 name: tofugraph-3d
-description: 3D 그래프 뷰어 생성 — 단일 HTML 파일 (서버 불필요, 브라우저로 바로 열기)
+description: 3D 그래프 뷰어 — localhost 서버 모드(새로고침 = 최신 그래프). 서버가 안 되는 환경은 단일 HTML 파일 폴백
 ---
 
 # $tofugraph-3d (Codex용 래퍼 — 정본 절차는 플러그인의 commands/3d.md)
