@@ -1,5 +1,5 @@
 ---
-description: 의미 이름표 실습 — 서브에이전트를 여러 개 스폰해 창고의 관계 전체에 의미 이름표(belongs_to·part_of 등 13종)를 붙입니다
+description: 의미 이름표 달기 — 서브에이전트를 여러 개 스폰해 창고의 관계 전체에 의미 이름표(belongs_to·part_of 등 13종)를 붙입니다
 allowed-tools: Bash, Read, Task
 ---
 
