@@ -159,6 +159,7 @@ doctor() {
   fi
 
   # 3. real search round-trip (health can be false-green while search is wedged)
+  local probe_ok=0
   if [ "$health" = "200" ]; then
     local probe
     probe=$(curl -s -m 25 -o /tmp/tofugraph_probe.json -w '%{http_code}' \
@@ -166,6 +167,7 @@ doctor() {
     if [ "$probe" = "200" ] && python3 -c \
       "import json; d=json.load(open('/tmp/tofugraph_probe.json')); assert 'results' in d" 2>/dev/null; then
       echo "[OK]   3. search probe answered (results key present)"
+      probe_ok=1
     else
       echo "[FAIL] 3. search probe http=$probe — 'wedge': health OK but search stuck."
       echo "       fix: tofugraph.sh heal  (restarts only after a second confirmation — no false-positive kills)"
@@ -175,20 +177,26 @@ doctor() {
     echo "[SKIP] 3. search probe (server not answering)"
   fi
 
-  # 4. index freshness
-  if [ -n "$ROOT" ] && [ -f "$ROOT/index/vault_graph.db" ]; then
+  # 4. index freshness — the running service may load a DB outside $GRAPHRAG_ROOT
+  #    (GRAPHRAG_DB_PATH); doctor must resolve the same file, and a live search
+  #    probe outranks "file not visible from this shell"
+  local dbf="${GRAPHRAG_DB_PATH:-${ROOT:+$ROOT/index/vault_graph.db}}"
+  if [ -n "$dbf" ] && [ -f "$dbf" ]; then
     local mtime now age_h
-    if [[ "$OSTYPE" == darwin* ]]; then mtime=$(stat -f '%m' "$ROOT/index/vault_graph.db"); else mtime=$(stat -c '%Y' "$ROOT/index/vault_graph.db"); fi
+    if [[ "$OSTYPE" == darwin* ]]; then mtime=$(stat -f '%m' "$dbf"); else mtime=$(stat -c '%Y' "$dbf"); fi
     now=$(date +%s); age_h=$(( (now - mtime) / 3600 ))
     if [ "$age_h" -le 168 ]; then
-      echo "[OK]   4. index freshness: updated ${age_h}h ago"
+      echo "[OK]   4. index freshness: updated ${age_h}h ago ($dbf)"
     else
       echo "[WARN] 4. index is ${age_h}h old (>7 days) — new notes are invisible to search."
       echo "       fix: tofugraph.sh build   (or check why the scheduled build stopped)"
       warns=$((warns+1))
     fi
+  elif [ "$probe_ok" = 1 ]; then
+    echo "[OK]   4. index served by the running server — its DB file is not visible from this shell"
+    echo "       (freshness unchecked; set GRAPHRAG_DB_PATH to the service's db path to check it)"
   else
-    echo "[WARN] 4. index db not found under \$GRAPHRAG_ROOT — not built yet?  fix: tofugraph.sh build"
+    echo "[WARN] 4. index db not found (checked \${GRAPHRAG_DB_PATH:-\$GRAPHRAG_ROOT/index/}) — not built yet?  fix: tofugraph.sh build"
     warns=$((warns+1))
   fi
 
