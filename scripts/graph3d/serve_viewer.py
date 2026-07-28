@@ -106,14 +106,25 @@ def main():
         print(f"[WARN] DB 없음: {db} — 서버는 띄우되, /tofugraph:build 후 새로고침하면 뜹니다.")
 
     socketserver.TCPServer.allow_reuse_address = True
-    try:
-        httpd = socketserver.ThreadingTCPServer((args.host, args.port), make_handler(state))
-    except OSError as e:
+    # 지정 포트가 점유돼 있으면 빈 포트를 자동 탐색한다 — GraphRAG 스택이 8401·8402를
+    # 이미 쓰는 환경 실측(2026-07-28 WSL) 반영: 고정 포트 처방은 한 번 더 막힌다.
+    httpd = None
+    port = args.port
+    for offset in range(20):
+        port = args.port + offset
+        try:
+            httpd = socketserver.ThreadingTCPServer((args.host, port), make_handler(state))
+            break
+        except OSError:
+            continue
+    if httpd is None:
         sys.exit(
-            f"[ERR] {args.host}:{args.port} 를 못 잡았습니다({e}) — 다른 포트로 재시도: "
-            f"--port {args.port + 1}  (또는 단일 파일 폴백: export_data.py + build_viewer.py)"
+            f"[ERR] {args.host}:{args.port}~{port} 전부 점유 — --port 로 다른 대역을 지정하거나 "
+            f"단일 파일 폴백(export_data.py + build_viewer.py)을 쓰세요."
         )
-    url = f"http://{args.host}:{args.port}/"
+    if port != args.port:
+        print(f"[INFO] {args.port} 점유 → 빈 포트 {port} 로 자동 전환")
+    url = f"http://{args.host}:{port}/"
     print(f"[OK] tofugraph 3D 뷰어 서버 기동 — {url}")
     print("     창고가 바뀌면 브라우저 새로고침만 하면 됩니다(요청마다 DB 변경 감지).")
     print("     멈추려면 Ctrl+C. (이 터미널을 계속 점유합니다)")
