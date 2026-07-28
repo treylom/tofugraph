@@ -148,10 +148,13 @@ doctor() {
     fails=$((fails+1))
   fi
 
-  # 2. ready (index loaded)?
-  if curl -s -m 5 "$API/ready" 2>/dev/null \
-    | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if d.get('ready') else 1)" 2>/dev/null; then
+  # 2. ready (index loaded)? — also capture the server-reported db_path so
+  #    checks 4/8 can find the exact DB the running service uses (0.4.4)
+  local ready_db="" ready_json=/tmp/tofugraph_ready.json
+  if curl -s -m 5 -o "$ready_json" "$API/ready" 2>/dev/null \
+    && python3 -c "import json; d=json.load(open('$ready_json')); raise SystemExit(0 if d.get('ready') else 1)" 2>/dev/null; then
     echo "[OK]   2. /ready true (index loaded)"
+    ready_db=$(python3 -c "import json; print(json.load(open('$ready_json')).get('db_path') or '')" 2>/dev/null)
   else
     echo "[WARN] 2. /ready not true — warming up (normal ~1-2min after restart) or index missing."
     echo "       fix: wait 60s and re-run; if persistent, run: tofugraph.sh build"
@@ -177,16 +180,21 @@ doctor() {
     echo "[SKIP] 3. search probe (server not answering)"
   fi
 
-  # 4. index freshness — the running service may load a DB outside $GRAPHRAG_ROOT
-  #    (GRAPHRAG_DB_PATH); doctor must resolve the same file, and a live search
-  #    probe outranks "file not visible from this shell"
-  local dbf="${GRAPHRAG_DB_PATH:-${ROOT:+$ROOT/index/vault_graph.db}}"
+  # 4. index freshness — resolve the same DB file the running service uses:
+  #    ① GRAPHRAG_DB_PATH (explicit)  ② /ready's db_path (server-reported, 0.4.4)
+  #    ③ $GRAPHRAG_ROOT/index/vault_graph.db (default layout). A live search
+  #    probe still outranks "file not visible from this shell".
+  local dbf="" dbsrc=""
+  if [ -n "${GRAPHRAG_DB_PATH:-}" ]; then dbf="$GRAPHRAG_DB_PATH" dbsrc="GRAPHRAG_DB_PATH"
+  elif [ -n "$ready_db" ] && [ -f "$ready_db" ]; then dbf="$ready_db" dbsrc="/ready db_path"
+  elif [ -n "$ROOT" ]; then dbf="$ROOT/index/vault_graph.db" dbsrc="GRAPHRAG_ROOT default"
+  fi
   if [ -n "$dbf" ] && [ -f "$dbf" ]; then
     local mtime now age_h
     if [[ "$OSTYPE" == darwin* ]]; then mtime=$(stat -f '%m' "$dbf"); else mtime=$(stat -c '%Y' "$dbf"); fi
     now=$(date +%s); age_h=$(( (now - mtime) / 3600 ))
     if [ "$age_h" -le 168 ]; then
-      echo "[OK]   4. index freshness: updated ${age_h}h ago ($dbf)"
+      echo "[OK]   4. index freshness: updated ${age_h}h ago ($dbf — via $dbsrc)"
     else
       echo "[WARN] 4. index is ${age_h}h old (>7 days) — new notes are invisible to search."
       echo "       fix: tofugraph.sh build   (or check why the scheduled build stopped)"
@@ -196,7 +204,7 @@ doctor() {
     echo "[OK]   4. index served by the running server — its DB file is not visible from this shell"
     echo "       (freshness unchecked; set GRAPHRAG_DB_PATH to the service's db path to check it)"
   else
-    echo "[WARN] 4. index db not found (checked \${GRAPHRAG_DB_PATH:-\$GRAPHRAG_ROOT/index/}) — not built yet?  fix: tofugraph.sh build"
+    echo "[WARN] 4. index db not found (checked GRAPHRAG_DB_PATH, /ready db_path, \$GRAPHRAG_ROOT/index/) — not built yet?  fix: tofugraph.sh build"
     warns=$((warns+1))
   fi
 
@@ -229,10 +237,15 @@ except Exception: print('unknown')" 2>/dev/null || echo unknown)
   # 8. semantic-label guard (a rebuild/merge bug can silently wipe enriched
   #    relationship labels; counting is cheap, losing them is not — the baseline
   #    ratchets up on growth and any drop below it is a hard FAIL)
-  local dbf="${ROOT:+$ROOT/index/vault_graph.db}" basef="${ROOT:+$ROOT/index/label-guard.baseline}"
-  if [ -n "$ROOT" ] && [ -f "$dbf" ] && command -v sqlite3 >/dev/null 2>&1; then
+  #    DB resolution = same 3-tier as check 4 (env > /ready > ROOT default, 0.4.4);
+  #    the baseline lives next to whichever DB is actually served.
+  local dbf8="$dbf" basef=""
+  [ -n "$dbf8" ] && [ ! -f "$dbf8" ] && dbf8="${ROOT:+$ROOT/index/vault_graph.db}"
+  [ -z "$dbf8" ] && dbf8="${ROOT:+$ROOT/index/vault_graph.db}"
+  basef="${dbf8:+${dbf8%/*}/label-guard.baseline}"
+  if [ -n "$dbf8" ] && [ -f "$dbf8" ] && command -v sqlite3 >/dev/null 2>&1; then
     local labels
-    labels=$(sqlite3 "$dbf" \
+    labels=$(sqlite3 "$dbf8" \
       "SELECT COUNT(*) FROM relationships WHERE type NOT IN ('related_to','mentions');" 2>/dev/null)
     if [ -z "$labels" ]; then
       echo "[INFO] 8. semantic-label guard: n/a (no relationships table — older index schema)"
