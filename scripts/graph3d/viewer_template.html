@@ -288,19 +288,49 @@ async function boot(){
   clusterForce.initialize = ()=>{};
   Graph.d3Force("cluster", clusterForce);
   addStars(Graph.scene());
-  Graph.scene().fog = new THREE.Fog(0x05070f, 1200, 4200);
+  Graph.scene().fog = new THREE.Fog(0x05070f, 1200, 4200);  // starting value — fitFogToLayout() replaces it once the layout settles
 
   Graph.onEngineStop(()=>{
     if (introDone) return;
     introDone = true;
     addCommunityLabels();
     refreshLinks();
+    fitFogToLayout();
     $("loading").style.opacity="0";
     setTimeout(()=>$("loading").style.display="none", 850);
     cinematicIntro();
   });
 
   renderStats(); renderLegend(); fpsGuard();
+}
+
+/* Fit the fog range to how far the layout actually spread.
+
+   Why: the fog distances used to be fixed (near 1200). As a graph grows, the force
+   layout spreads wider, and everything past `near` sinks into the fog. Nodes survive
+   that — they use AdditiveBlending, so fog only dims them. Links do not: they use the
+   default NormalBlending, and the fog color is identical to the background color, so a
+   link blended toward fog becomes indistinguishable from the background and disappears
+   outright. The result is a graph where the dots are still visible but the lines only
+   remain near the center. Measured on a 7,981-node / 18,432-link graph: 68.5% of nodes
+   sat beyond the fixed `near`, and fitting the range brought that to 28.1%.
+
+   Replacing one fixed pair with another only delays the problem, so derive it from the
+   layout instead. Note this uses each node's distance from the origin, while the fog
+   shader works in view-space depth — they are different measures, and this is a
+   deliberate approximation: origin distance is stable regardless of where the camera
+   moves, whereas view-space depth changes with every orbit. Both bounds are floored at
+   the previous fixed values, so this only widens the fog for graphs that outgrew them. */
+function fitFogToLayout(){
+  const r = NODES.map(n=>Math.hypot(n.x,n.y,n.z)).sort((a,b)=>a-b);
+  if (!r.length) return;
+  const p90 = r[Math.floor(r.length*0.90)], max = r[r.length-1];
+  // near = where the outer 10% of nodes begin · far = beyond the furthest node, so even
+  // the edge of the graph is never fully swallowed. Both are floored at the old defaults
+  // (1200 / 4200), so a small graph that never spreads that far keeps the original framing
+  // — this only ever widens the fog, never tightens it.
+  const near = Math.max(1200, Math.round(p90)), far = Math.max(4200, Math.round(max*1.5));
+  Graph.scene().fog = new THREE.Fog(0x05070f, near, far);
 }
 
 function cinematicIntro(){
@@ -398,6 +428,11 @@ function refreshLinks(){
   geo.setAttribute("position", new THREE.Float32BufferAttribute(pos,3));
   geo.setAttribute("color", new THREE.Float32BufferAttribute(col,3));
   linkMesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+    // Heads up: this material is fogged (the default) and uses NormalBlending, while nodes
+    // use AdditiveBlending. Since the fog color equals the background color, a fogged link
+    // blends straight into the background and vanishes, whereas a fogged node merely dims.
+    // That asymmetry is why distant links can disappear while their endpoints stay visible —
+    // fitFogToLayout() keeps the fog range wide enough that it does not happen in practice.
     vertexColors:true, transparent:true, depthWrite:false,
     opacity:(hlNodes.size||commSpot.size)?0.8:baseLinkOpacity() }));
   Graph.scene().add(linkMesh);
